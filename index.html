@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plataforma de Recursos RJA</title>
+    <title>Plataforma de Cursos Tech</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
@@ -191,6 +191,14 @@
         .empty-state { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
         .empty-state-icon { font-size: 4em; margin-bottom: 20px; opacity: 0.5; }
 
+        .site-stats {
+            margin-top: 25px; padding: 12px 18px; text-align: center;
+            color: var(--text-secondary); font-size: 0.85em; letter-spacing: 0.5px;
+            border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 10px;
+            background: rgba(15, 23, 42, 0.7);
+        }
+        .site-stats strong { color: var(--neon-cyan); font-family: 'Rajdhani', sans-serif; font-size: 1.15em; }
+
         .modal {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(5, 5, 16, 0.9); backdrop-filter: blur(5px);
@@ -247,7 +255,7 @@
                 <h2>📚 Cursos Disponibles</h2>
                 <div class="form-group admin-only">
                     <label for="courseName">Nuevo Curso</label>
-                    <input type="text" id="courseName" placeholder="Ej: Ciberseguridad Básica">
+                    <input type="text" id="courseName" placeholder="Ej: Ciberseguridad Básica" onkeydown="if(event.key==='Enter') createCourse()">
                 </div>
                 <button onclick="createCourse()" class="admin-only">➕ Crear Curso</button>
                 <div class="courses-list" id="coursesList"></div>
@@ -263,6 +271,9 @@
                 </div>
             </div>
         </div>
+        <div class="site-stats" aria-live="polite">
+            👁️ Visitas: <strong id="visitCount">...</strong>
+        </div>
     </div>
 
     <!-- Modal de Login Administrador -->
@@ -274,11 +285,11 @@
             </div>
             <div class="form-group">
                 <label for="adminEmail">Correo Electrónico</label>
-                <input type="email" id="adminEmail" placeholder="admin@sistema.com">
+                <input type="email" id="adminEmail" placeholder="admin@sistema.com" onkeydown="if(event.key==='Enter') login()">
             </div>
             <div class="form-group">
                 <label for="adminPassword">Contraseña</label>
-                <input type="password" id="adminPassword" placeholder="••••••••">
+                <input type="password" id="adminPassword" placeholder="••••••••" onkeydown="if(event.key==='Enter') login()">
             </div>
             <button onclick="login()">Iniciar Sesión</button>
             <p class="login-error" id="loginError">⚠️ Correo o contraseña incorrectos</p>
@@ -294,11 +305,11 @@
             </div>
             <div class="form-group">
                 <label for="videoTitle">Título del Video</label>
-                <input type="text" id="videoTitle" placeholder="Ej: Módulo 1: Introducción">
+                <input type="text" id="videoTitle" placeholder="Ej: Módulo 1: Introducción" onkeydown="if(event.key==='Enter') saveVideo()">
             </div>
             <div class="form-group">
                 <label for="videoUrl">Enlace de YouTube</label>
-                <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=...">
+                <input type="text" id="videoUrl" placeholder="https://www.youtube.com/watch?v=..." onkeydown="if(event.key==='Enter') saveVideo()">
             </div>
             <button onclick="saveVideo()">💾 Guardar Video</button>
         </div>
@@ -321,9 +332,40 @@
         let editingVideoId = null
         let isAdmin = false
 
-        // Inicializar
+        // Inicializar y escuchar cambios de sesión
+        supabase.auth.onAuthStateChange((event, session) => {
+            const user = session?.user
+            if (user && user.email === 'ministrylion@gmail.com') {
+                isAdmin = true
+                document.body.classList.add('is-admin')
+                document.getElementById('adminBtnText').textContent = '🔓 Cerrar Sesión'
+            } else {
+                isAdmin = false
+                document.body.classList.remove('is-admin')
+                document.getElementById('adminBtnText').textContent = '🔒 Acceso Admin'
+            }
+            updateEmptyMessages()
+            renderCourses()
+            if (currentCourseId) renderCourseContent()
+        })
+
+        // Comprobación inicial de admin y cursos
         checkAdminStatus()
         loadCourses()
+        registerVisit()
+
+        async function registerVisit() {
+            const counter = document.getElementById('visitCount')
+            const { data, error } = await supabase.rpc('increment_site_visits')
+
+            if (error) {
+                console.error('Error updating visit counter:', error)
+                counter.textContent = 'No disponible'
+                return
+            }
+
+            counter.textContent = Number(data).toLocaleString('es-ES')
+        }
 
         // ============================================
         // FUNCIONES DE AUTENTICACIÓN
@@ -348,6 +390,7 @@
             } else {
                 document.getElementById('loginModal').classList.add('active')
                 document.getElementById('loginError').style.display = 'none'
+                document.getElementById('loginError').textContent = '⚠️ Correo o contraseña incorrectos'
                 document.getElementById('adminEmail').value = ''
                 document.getElementById('adminPassword').value = ''
             }
@@ -360,11 +403,19 @@
         window.login = async function() {
             const email = document.getElementById('adminEmail').value.trim()
             const password = document.getElementById('adminPassword').value.trim()
+            const errorMsg = document.getElementById('loginError')
+
+            if (!email || !password) {
+                errorMsg.textContent = '⚠️ Por favor ingresa correo y contraseña'
+                errorMsg.style.display = 'block'
+                return
+            }
 
             const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
             if (error) {
-                document.getElementById('loginError').style.display = 'block'
+                errorMsg.textContent = '⚠️ Correo o contraseña incorrectos'
+                errorMsg.style.display = 'block'
                 return
             }
 
@@ -376,8 +427,8 @@
                 await loadCourses()
             } else {
                 await supabase.auth.signOut()
-                document.getElementById('loginError').textContent = '⚠️ No tienes permisos de administrador'
-                document.getElementById('loginError').style.display = 'block'
+                errorMsg.textContent = '⚠️ No tienes permisos de administrador'
+                errorMsg.style.display = 'block'
             }
         }
 
@@ -404,17 +455,18 @@
                 return
             }
 
-            courses = data.map(course => ({
+            courses = data ? data.map(course => ({
                 ...course,
-                videos_count: course.videos[0]?.count || 0
-            }))
+                videos_count: course.videos?.[0]?.count || 0
+            })) : []
             
             renderCourses()
             if (currentCourseId) renderCourseContent()
         }
 
         window.createCourse = async function() {
-            const name = document.getElementById('courseName').value.trim()
+            const input = document.getElementById('courseName')
+            const name = input.value.trim()
             if (!name) {
                 alert('Por favor ingresa un nombre para el curso')
                 return
@@ -428,13 +480,15 @@
 
             if (error) {
                 console.error('Error creating course:', error)
-                alert('Error al crear el curso. Verifica que hayas iniciado sesión como admin.')
+                alert('Error al crear el curso: ' + (error.message || 'Verifica permisos de administrador en Supabase'))
                 return
             }
 
-            document.getElementById('courseName').value = ''
+            input.value = ''
             await loadCourses()
-            selectCourse(data.id)
+            if (data && data.id) {
+                selectCourse(data.id)
+            }
         }
 
         window.selectCourse = function(courseId) {
@@ -451,7 +505,7 @@
 
             if (error) {
                 console.error('Error deleting course:', error)
-                alert('Error al eliminar el curso.')
+                alert('Error al eliminar el curso: ' + (error.message || ''))
                 return
             }
 
@@ -506,7 +560,7 @@
                 return
             }
 
-            if (videos.length === 0) {
+            if (!videos || videos.length === 0) {
                 content.innerHTML = `
                     <div class="content-header"><h2>${course.name}</h2></div>
                     <button onclick="openModal()" class="admin-only" style="margin-bottom: 20px;">➕ Agregar Primer Video</button>
@@ -558,7 +612,7 @@
             const videoUrlInput = document.getElementById('videoUrl')
 
             if (videoId) {
-                const { data } = await supabase.from('videos').select('*').eq('id', videoId).single()
+                const { data } = await supabase.from('videos').select('*').eq('id', videoId).maybeSingle()
                 if (data) {
                     title.textContent = 'Editar Video'
                     videoTitleInput.value = data.title
@@ -600,7 +654,7 @@
 
                 if (error) {
                     console.error('Error updating video:', error)
-                    alert('Error al actualizar el video.')
+                    alert('Error al actualizar el video: ' + (error.message || ''))
                     return
                 }
             } else {
@@ -610,9 +664,9 @@
                     .eq('course_id', currentCourseId)
                     .order('position', { ascending: false })
                     .limit(1)
-                    .single()
+                    .maybeSingle()
 
-                const newPosition = maxPosition ? maxPosition.position + 1 : 0
+                const newPosition = (maxPosition && maxPosition.position !== null) ? maxPosition.position + 1 : 0
 
                 const { error } = await supabase
                     .from('videos')
@@ -626,12 +680,13 @@
 
                 if (error) {
                     console.error('Error creating video:', error)
-                    alert('Error al crear el video.')
+                    alert('Error al crear el video: ' + (error.message || ''))
                     return
                 }
             }
 
             window.closeModal()
+            await loadCourses()
             await renderCourseContent()
         }
 
@@ -648,11 +703,12 @@
 
             if (error) {
                 console.error('Error deleting video:', error)
-                alert('Error al eliminar el video.')
+                alert('Error al eliminar el video: ' + (error.message || ''))
                 return
             }
 
             if (currentVideoId === videoId) currentVideoId = null
+            await loadCourses()
             await renderCourseContent()
         }
 
@@ -676,11 +732,15 @@
         }
 
         // Hacer funciones disponibles globalmente para los onclick del HTML
+        window.createCourse = createCourse;
         window.selectCourse = selectCourse;
         window.deleteCourse = deleteCourse;
         window.playVideo = playVideo;
         window.editVideo = editVideo;
         window.deleteVideo = deleteVideo;
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+        window.saveVideo = saveVideo;
 
         // Cerrar modales al hacer clic fuera
         document.getElementById('videoModal').addEventListener('click', function(e) {
